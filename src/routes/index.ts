@@ -4,13 +4,10 @@ import { ScraperController } from '../controllers/scraper.controller';
 const router = Router();
 const scraperController = new ScraperController();
 
-// Main scraping endpoint
 router.get('/naver', scraperController.scrapeNaver.bind(scraperController));
 
-// Health check endpoint
 router.get('/health', scraperController.healthCheck.bind(scraperController));
 
-// API info endpoint
 router.get('/', (req, res) => {
   res.json({
     name: 'Naver Scraper API',

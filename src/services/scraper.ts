@@ -16,30 +16,34 @@ export class NaverScraper {
     this.fingerprintManager = new FingerprintManager();
   }
 
-  private createAxiosInstance(options: ScrapingOptions = {}): AxiosInstance {
-    const headers = this.fingerprintManager.generateHeaders();
-    
-    if (options.userAgent) {
-      headers['User-Agent'] = options.userAgent;
-    }
-
-    const axiosConfig: any = {
-      timeout: options.timeout || config.scraping.timeout,
-      headers,
-      validateStatus: () => true // Don't throw on any status code
-    };
-
-    // Add proxy if enabled
-    if (options.useProxy !== false) {
-      const agent = this.proxyManager.getNextProxy();
-      if (agent) {
-        axiosConfig.httpsAgent = agent;
-        axiosConfig.httpAgent = agent;
-      }
-    }
-
-    return axios.create(axiosConfig);
+ private createAxiosInstance(options: ScrapingOptions = {}): AxiosInstance {
+  const headers = this.fingerprintManager.generateHeaders();
+  
+  if (options.userAgent) {
+    headers['User-Agent'] = options.userAgent;
   }
+
+  const axiosConfig: any = {
+    timeout: options.timeout || config.scraping.timeout,
+    headers,
+    validateStatus: () => true 
+  };
+
+  if (options.useProxy !== false) {
+    const agent = this.proxyManager.getNextProxy();
+    if (agent) {
+      axiosConfig.httpsAgent = agent;
+      axiosConfig.httpAgent = agent;
+      Logger.info('Using proxy for request');
+    } else {
+      Logger.info('No proxy available, using direct connection');
+    }
+  } else {
+    Logger.info('Proxy disabled for this request');
+  }
+
+  return axios.create(axiosConfig);
+}
 
   private async makeRequest(url: string, options: ScrapingOptions = {}): Promise<AxiosResponse> {
     const maxRetries = options.maxRetries || config.scraping.maxRetries;
@@ -47,7 +51,6 @@ export class NaverScraper {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Add random delay before request
         await randomDelay();
 
         const axiosInstance = this.createAxiosInstance(options);
@@ -55,17 +58,15 @@ export class NaverScraper {
 
         const response = await axiosInstance.get(url);
 
-        // Check if response is successful
         if (response.status === 200 && response.data) {
           Logger.info(`Successfully scraped data from Naver API`);
           return response;
         }
 
-        // Handle rate limiting or blocking
         if (response.status === 429 || response.status === 403) {
           Logger.warn(`Rate limited or blocked (${response.status}), rotating proxy...`);
           this.proxyManager.rotateProxy();
-          await randomDelay(5000, 10000); // Longer delay for rate limits
+          await randomDelay(5000, 10000);
           continue;
         }
 
@@ -76,7 +77,6 @@ export class NaverScraper {
         Logger.error(`Attempt ${attempt}/${maxRetries} failed:`, (error as Error).message);
 
         if (attempt < maxRetries) {
-          // Rotate proxy and wait before retry
           this.proxyManager.rotateProxy();
           await randomDelay(2000, 5000);
         }
@@ -90,7 +90,6 @@ export class NaverScraper {
     try {
       const products = [];
       
-      // Handle different possible response structures
       let productList = [];
       
       if (data.shoppingResult && data.shoppingResult.products) {
@@ -143,7 +142,6 @@ export class NaverScraper {
 
   async scrapeNaverApi(apiUrl: string, options: ScrapingOptions = {}): Promise<NaverApiResponse> {
     try {
-      // Limit concurrent requests
       while (this.requestQueue.length >= config.scraping.maxConcurrentRequests) {
         await Promise.race(this.requestQueue);
       }
@@ -151,7 +149,6 @@ export class NaverScraper {
       const requestPromise = this.makeRequest(apiUrl, options);
       this.requestQueue.push(requestPromise);
 
-      // Clean up completed requests
       requestPromise.finally(() => {
         const index = this.requestQueue.indexOf(requestPromise);
         if (index > -1) {
